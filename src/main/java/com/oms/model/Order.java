@@ -11,8 +11,10 @@ import java.util.UUID;
  * @param id        unique identifier of the order
  * @param symbol    ticker/commodity identifying the instrument being traded
  * @param side      whether the order is a {@link Side#BUY} or {@link Side#SELL}
+ * @param type      whether the order is a {@link OrderType#LIMIT} or {@link OrderType#MARKET} order
  * @param quantity  amount of the underlying instrument to be traded
- * @param price     price per unit at which the order was placed
+ * @param price     price per unit for a {@link OrderType#LIMIT} order; {@code null} for a
+ *                  {@link OrderType#MARKET} order, which carries no price
  * @param timestamp instant the order was received by the order management system
  * @param status    current lifecycle state of the order
  */
@@ -20,6 +22,7 @@ public record Order(
         UUID id,
         String symbol,
         Side side,
+        OrderType type,
         BigDecimal quantity,
         BigDecimal price,
         Instant timestamp,
@@ -30,17 +33,21 @@ public record Order(
      * Validates every field. Runs for all construction paths (direct, {@link Builder}, and
      * order amendments), so an invalid {@code Order} can never exist.
      *
-     * @throws NullPointerException     if any field is {@code null}
-     * @throws IllegalArgumentException if {@code symbol} is blank, or {@code quantity} or
-     *                                  {@code price} is not strictly positive
+     * @throws NullPointerException     if any field other than the price of a market order is
+     *                                  {@code null}
+     * @throws IllegalArgumentException if {@code symbol} is blank, {@code quantity} is not
+     *                                  strictly positive, a priced ({@link OrderType#LIMIT} or
+     *                                  {@link OrderType#IOC}) order's price is missing or not
+     *                                  strictly positive, or a {@link OrderType#MARKET} order
+     *                                  carries a price
      */
     public Order {
 
         Objects.requireNonNull(id, "id must not be null");
         Objects.requireNonNull(symbol, "symbol must not be null");
         Objects.requireNonNull(side, "side must not be null");
+        Objects.requireNonNull(type, "type must not be null");
         Objects.requireNonNull(quantity, "quantity must not be null");
-        Objects.requireNonNull(price, "price must not be null");
         Objects.requireNonNull(timestamp, "timestamp must not be null");
         Objects.requireNonNull(status, "status must not be null");
 
@@ -50,9 +57,27 @@ public record Order(
         if (quantity.signum() <= 0) {
             throw new IllegalArgumentException("quantity must be strictly positive, but was " + quantity);
         }
-        if (price.signum() <= 0) {
-            throw new IllegalArgumentException("price must be strictly positive, but was " + price);
+
+        switch (type) {
+            case LIMIT, IOC -> {
+                Objects.requireNonNull(price, "price must not be null for a " + type + " order");
+                if (price.signum() <= 0) {
+                    throw new IllegalArgumentException("price must be strictly positive, but was " + price);
+                }
+            }
+            case MARKET -> {
+                if (price != null) {
+                    throw new IllegalArgumentException("a MARKET order must not carry a price, but was " + price);
+                }
+            }
         }
+    }
+
+    /**
+     * @return {@code true} if this is a {@link OrderType#MARKET} order
+     */
+    public boolean isMarket() {
+        return type == OrderType.MARKET;
     }
 
     /**
@@ -70,6 +95,7 @@ public record Order(
                 .id(id)
                 .symbol(symbol)
                 .side(side)
+                .type(type)
                 .quantity(quantity)
                 .price(price)
                 .timestamp(timestamp)
@@ -80,12 +106,15 @@ public record Order(
      * Fluent builder for {@link Order}. Because {@code Order} is immutable, this is also the
      * mechanism for "editing" an order: start from {@link #toBuilder()}, change the desired
      * fields, and {@link #build()} a new instance.
+     *
+     * <p>The {@link #type(OrderType)} defaults to {@link OrderType#LIMIT}.
      */
     public static final class Builder {
 
         private UUID id;
         private String symbol;
         private Side side;
+        private OrderType type = OrderType.LIMIT;
         private BigDecimal quantity;
         private BigDecimal price;
         private Instant timestamp;
@@ -106,6 +135,11 @@ public record Order(
 
         public Builder side(Side side) {
             this.side = side;
+            return this;
+        }
+
+        public Builder type(OrderType type) {
+            this.type = type;
             return this;
         }
 
@@ -130,7 +164,7 @@ public record Order(
         }
 
         public Order build() {
-            return new Order(id, symbol, side, quantity, price, timestamp, status);
+            return new Order(id, symbol, side, type, quantity, price, timestamp, status);
         }
     }
 }

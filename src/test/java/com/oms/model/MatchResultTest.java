@@ -1,7 +1,5 @@
-package com.oms.matching;
+package com.oms.model;
 
-import com.oms.model.Order;
-import com.oms.model.Trade;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -31,10 +29,21 @@ class MatchResultTest {
     }
 
     @Test
-    void notFullyFilledWhenRemainderRests() {
+    void notFullyFilledWhenRemainderPresent() {
         Order remainder = base().build();
         MatchResult result = new MatchResult(List.of(), Optional.of(remainder));
         assertFalse(result.fullyFilled());
+    }
+
+    @Test
+    void hasRestingRemainderOnlyForPendingRemainder() {
+        Order resting = base().status(OrderStatus.PENDING).build();
+        assertTrue(new MatchResult(List.of(), Optional.of(resting)).hasRestingRemainder());
+
+        Order cancelled = base().status(OrderStatus.CANCELLED).build();
+        assertFalse(new MatchResult(List.of(), Optional.of(cancelled)).hasRestingRemainder());
+
+        assertFalse(new MatchResult(List.of(aTrade()), Optional.empty()).hasRestingRemainder());
     }
 
     @Test

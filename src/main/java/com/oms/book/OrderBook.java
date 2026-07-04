@@ -17,13 +17,15 @@ import java.util.UUID;
 import java.util.function.UnaryOperator;
 
 /**
- * Maintains the resting buy and sell orders for a single instrument in price-time priority.
+ * Maintains the resting buy and sell orders for a single instrument in market-then-price-time
+ * priority.
  *
- * <p>Buy orders are kept in descending price order, with the earliest timestamp winning ties
- * (highest bid first). Sell orders are kept in ascending price order, with the earliest
- * timestamp winning ties (lowest ask first). Each comparator falls back to comparing
- * {@link Order#id()} so that two distinct orders sharing the same price and timestamp do not
- * collide as equal keys within the underlying {@link TreeMap}.
+ * <p>Resting {@link com.oms.model.OrderType#MARKET} orders rank ahead of all limit orders on their
+ * side and are ordered among themselves by earliest arrival time. Limit orders follow, in
+ * descending price for buys (highest bid first) and ascending price for sells (lowest ask first),
+ * with the earliest timestamp winning ties. Each comparator falls back to comparing
+ * {@link Order#id()} so that two distinct orders sharing the same rank do not collide as equal
+ * keys within the underlying {@link TreeMap}.
  *
  * <p>Each map is keyed by {@link Order#id()} rather than the order itself; since a
  * {@code TreeMap}'s ordering comparator only ever sees the keys, the comparators resolve each
@@ -38,6 +40,8 @@ public class OrderBook {
 
     /**
      * Adds an order to the buy or sell side of the book, based on its {@link Order#side()}.
+     * A resting {@link com.oms.model.OrderType#MARKET} order ranks ahead of all limit orders on
+     * its side, ordered among other market orders by arrival time.
      */
     public void addOrder(Order order) {
         Objects.requireNonNull(order, "order must not be null");
@@ -94,7 +98,8 @@ public class OrderBook {
     }
 
     /**
-     * @return the highest-priced (best) resting buy order, if any
+     * @return the best resting buy order (a market order if one rests, otherwise the highest-priced
+     *         limit), if any
      */
     public Optional<Order> bestBuy() {
         var entry = buyOrders.firstEntry();
@@ -102,7 +107,8 @@ public class OrderBook {
     }
 
     /**
-     * @return the lowest-priced (best) resting sell order, if any
+     * @return the best resting sell order (a market order if one rests, otherwise the lowest-priced
+     *         limit), if any
      */
     public Optional<Order> bestSell() {
         var entry = sellOrders.firstEntry();
@@ -111,14 +117,15 @@ public class OrderBook {
 
     /**
      * Calculates the bid-ask spread: the best (lowest) sell price minus the best (highest) buy
-     * price. The result is empty unless both sides have at least one resting order, since the
-     * spread is undefined otherwise.
+     * price. The result is empty unless both sides have at least one resting order; it is also
+     * empty when the best order on either side is a market order, since a market order carries no
+     * price and the spread is therefore undefined.
      *
-     * @return the spread, or empty if either side of the book is empty
+     * @return the spread, or empty if it cannot be determined
      */
     public Optional<BigDecimal> spread() {
-        return bestBuy().flatMap(buy ->
-                bestSell().map(sell -> sell.price().subtract(buy.price())));
+        return bestBuy().filter(buy -> !buy.isMarket()).flatMap(buy ->
+                bestSell().filter(sell -> !sell.isMarket()).map(sell -> sell.price().subtract(buy.price())));
     }
 
     /**
@@ -145,10 +152,21 @@ public class OrderBook {
     }
 
     private Comparator<UUID> orderIdComparator(boolean buySide) {
+        // Market orders rank ahead of all limit orders; the id tie-break keeps distinct orders
+        // that share a rank from colliding as equal keys in the TreeMap.
+        Comparator<Order> marketBeforeLimit = Comparator.comparing((Order o) -> o.isMarket() ? 0 : 1);
+        Comparator<Order> byTime = Comparator.comparing(Order::timestamp).thenComparing(Order::id);
         Comparator<Order> byPrice = buySide
-                ? Comparator.comparing(Order::price).reversed()
-                : Comparator.comparing(Order::price);
-        Comparator<Order> byPriceThenTime = byPrice.thenComparing(Order::timestamp).thenComparing(Order::id);
-        return Comparator.comparing(ordersById::get, byPriceThenTime);
+                ? Comparator.comparing(Order::price).reversed()  // highest bid first
+                : Comparator.comparing(Order::price);            // lowest ask first
+        Comparator<Order> byPriceThenTime = byPrice.thenComparing(byTime);
+
+        // Once market-vs-limit ties, both orders are the same kind: market orders compare on time
+        // only (they have no price), limit orders on price then time.
+        Comparator<Order> withinGroup = (a, b) ->
+                a.isMarket() ? byTime.compare(a, b) : byPriceThenTime.compare(a, b);
+
+        Comparator<Order> orderComparator = marketBeforeLimit.thenComparing(withinGroup);
+        return Comparator.comparing(ordersById::get, orderComparator);
     }
 }

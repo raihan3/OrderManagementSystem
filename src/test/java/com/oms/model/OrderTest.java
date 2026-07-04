@@ -8,8 +8,11 @@ import java.util.UUID;
 
 import static com.oms.support.TestOrders.base;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OrderTest {
 
@@ -83,5 +86,46 @@ class OrderTest {
     void rejectsNonPositivePrice() {
         assertThrows(IllegalArgumentException.class, () -> base().price(BigDecimal.ZERO).build());
         assertThrows(IllegalArgumentException.class, () -> base().price(new BigDecimal("-0.01")).build());
+    }
+
+    @Test
+    void defaultsToLimitType() {
+        assertEquals(OrderType.LIMIT, base().build().type());
+    }
+
+    @Test
+    void marketOrderHasNoPrice() {
+        Order market = base().type(OrderType.MARKET).price(null).build();
+
+        assertEquals(OrderType.MARKET, market.type());
+        assertNull(market.price());
+        assertTrue(market.isMarket());
+    }
+
+    @Test
+    void marketOrderRejectsAPrice() {
+        assertThrows(IllegalArgumentException.class,
+                () -> base().type(OrderType.MARKET).price(new BigDecimal("100")).build());
+    }
+
+    @Test
+    void limitOrderRequiresAPrice() {
+        assertThrows(NullPointerException.class,
+                () -> base().type(OrderType.LIMIT).price(null).build());
+    }
+
+    @Test
+    void iocOrderCarriesAPriceAndIsNotAMarketOrder() {
+        Order ioc = base().type(OrderType.IOC).price(new BigDecimal("100")).build();
+
+        assertEquals(OrderType.IOC, ioc.type());
+        assertEquals(new BigDecimal("100"), ioc.price());
+        assertFalse(ioc.isMarket());
+    }
+
+    @Test
+    void iocOrderRequiresAPrice() {
+        assertThrows(NullPointerException.class,
+                () -> base().type(OrderType.IOC).price(null).build());
     }
 }

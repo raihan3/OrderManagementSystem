@@ -12,6 +12,7 @@ import java.util.Optional;
 import static com.oms.support.TestOrders.at;
 import static com.oms.support.TestOrders.base;
 import static com.oms.support.TestOrders.buy;
+import static com.oms.support.TestOrders.marketBuy;
 import static com.oms.support.TestOrders.sell;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -125,6 +126,32 @@ class OrderBookTest {
         assertEquals(Optional.empty(), book.spread());
 
         book.addOrder(buy("1", "100", at(0)));
+        assertEquals(Optional.empty(), book.spread());
+    }
+
+    @Test
+    void marketOrderRestsAheadOfHigherPricedLimit() {
+        book.addOrder(buy("1", "1000", at(0)));       // a very aggressive limit bid
+        Order market = marketBuy("1", at(1));
+        book.addOrder(market);
+
+        assertSame(market, book.bestBuy().orElseThrow()); // market still ranks first
+    }
+
+    @Test
+    void restingMarketOrdersAreOrderedByArrivalTime() {
+        Order earlier = marketBuy("1", at(0));
+        book.addOrder(marketBuy("1", at(5)));
+        book.addOrder(earlier);
+
+        assertSame(earlier, book.bestBuy().orElseThrow());
+    }
+
+    @Test
+    void spreadIsEmptyWhenTopOfBookIsAMarketOrder() {
+        book.addOrder(marketBuy("1", at(0)));
+        book.addOrder(sell("1", "105", at(1)));
+
         assertEquals(Optional.empty(), book.spread());
     }
 
