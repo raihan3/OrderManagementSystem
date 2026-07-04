@@ -3,6 +3,7 @@ package com.oms.book;
 import com.oms.model.Order;
 import com.oms.model.Side;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -106,6 +107,18 @@ public class OrderBook {
     public Optional<Order> bestSell() {
         var entry = sellOrders.firstEntry();
         return entry == null ? Optional.empty() : Optional.of(entry.getValue());
+    }
+
+    /**
+     * Calculates the bid-ask spread: the best (lowest) sell price minus the best (highest) buy
+     * price. The result is empty unless both sides have at least one resting order, since the
+     * spread is undefined otherwise.
+     *
+     * @return the spread, or empty if either side of the book is empty
+     */
+    public Optional<BigDecimal> spread() {
+        return bestBuy().flatMap(buy ->
+                bestSell().map(sell -> sell.price().subtract(buy.price())));
     }
 
     /**
