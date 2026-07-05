@@ -128,4 +128,82 @@ class OrderTest {
         assertThrows(NullPointerException.class,
                 () -> base().type(OrderType.IOC).price(null).build());
     }
+
+    @Test
+    void fokOrderCarriesAPriceAndIsNotAMarketOrder() {
+        Order fok = base().type(OrderType.FOK).price(new BigDecimal("100")).build();
+
+        assertEquals(OrderType.FOK, fok.type());
+        assertEquals(new BigDecimal("100"), fok.price());
+        assertFalse(fok.isMarket());
+    }
+
+    @Test
+    void fokOrderRequiresAPrice() {
+        assertThrows(NullPointerException.class,
+                () -> base().type(OrderType.FOK).price(null).build());
+    }
+
+    @Test
+    void stopOrderRequiresAStopPriceAndForbidsALimitPrice() {
+        Order stop = base().type(OrderType.STOP).price(null).stopPrice(new BigDecimal("95")).build();
+        assertEquals(new BigDecimal("95"), stop.stopPrice());
+        assertNull(stop.price());
+        assertTrue(stop.isStop());
+
+        assertThrows(NullPointerException.class,
+                () -> base().type(OrderType.STOP).price(null).stopPrice(null).build());
+        assertThrows(IllegalArgumentException.class,
+                () -> base().type(OrderType.STOP).price(new BigDecimal("95")).stopPrice(new BigDecimal("95")).build());
+        assertThrows(IllegalArgumentException.class,
+                () -> base().type(OrderType.STOP).price(null).stopPrice(BigDecimal.ZERO).build());
+    }
+
+    @Test
+    void stopLimitOrderRequiresBothStopAndLimitPrices() {
+        Order stopLimit = base().type(OrderType.STOP_LIMIT)
+                .stopPrice(new BigDecimal("105")).price(new BigDecimal("106")).build();
+        assertEquals(new BigDecimal("105"), stopLimit.stopPrice());
+        assertEquals(new BigDecimal("106"), stopLimit.price());
+        assertTrue(stopLimit.isStop());
+
+        assertThrows(NullPointerException.class,
+                () -> base().type(OrderType.STOP_LIMIT).price(new BigDecimal("106")).stopPrice(null).build());
+        assertThrows(NullPointerException.class,
+                () -> base().type(OrderType.STOP_LIMIT).price(null).stopPrice(new BigDecimal("105")).build());
+    }
+
+    @Test
+    void nonStopOrdersRejectAStopPrice() {
+        assertThrows(IllegalArgumentException.class,
+                () -> base().type(OrderType.LIMIT).stopPrice(new BigDecimal("95")).build());
+        assertThrows(IllegalArgumentException.class,
+                () -> base().type(OrderType.MARKET).price(null).stopPrice(new BigDecimal("95")).build());
+    }
+
+    @Test
+    void buyStopTriggersAtOrAboveItsStopPrice() {
+        Order buyStop = base().side(Side.BUY).type(OrderType.STOP).price(null)
+                .stopPrice(new BigDecimal("100")).build();
+
+        assertFalse(buyStop.isStopTriggeredAt(new BigDecimal("99.99")));
+        assertTrue(buyStop.isStopTriggeredAt(new BigDecimal("100")));
+        assertTrue(buyStop.isStopTriggeredAt(new BigDecimal("101")));
+    }
+
+    @Test
+    void sellStopTriggersAtOrBelowItsStopPrice() {
+        Order sellStop = base().side(Side.SELL).type(OrderType.STOP).price(null)
+                .stopPrice(new BigDecimal("100")).build();
+
+        assertFalse(sellStop.isStopTriggeredAt(new BigDecimal("100.01")));
+        assertTrue(sellStop.isStopTriggeredAt(new BigDecimal("100")));
+        assertTrue(sellStop.isStopTriggeredAt(new BigDecimal("99")));
+    }
+
+    @Test
+    void nonStopOrderHasNoTrigger() {
+        assertThrows(IllegalStateException.class,
+                () -> base().build().isStopTriggeredAt(new BigDecimal("100")));
+    }
 }

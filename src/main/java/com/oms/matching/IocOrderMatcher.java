@@ -16,8 +16,11 @@ import java.util.Optional;
  * Matches an immediate-or-cancel (IOC) order. It crosses on price exactly like a limit order, but
  * never rests: any quantity that cannot be filled immediately is cancelled rather than placed on
  * the book.
+ *
+ * <p>{@link FokOrderMatcher} extends this to reuse the same crossing and cancel-remainder rules
+ * while additionally forbidding partial fills.
  */
-final class IocOrderMatcher extends LimitOrderMatcher {
+class IocOrderMatcher extends LimitOrderMatcher {
 
     IocOrderMatcher(Clock clock, MarketPriceTracker marketPriceTracker) {
         super(clock, marketPriceTracker);

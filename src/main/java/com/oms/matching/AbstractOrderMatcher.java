@@ -40,6 +40,12 @@ abstract class AbstractOrderMatcher implements OrderMatcher {
         Objects.requireNonNull(incoming, "incoming order must not be null");
         Objects.requireNonNull(book, "book must not be null");
 
+        if (!canExecute(incoming, book)) {
+            // Pre-trade check failed: no fills at all, hand the full quantity to the remainder
+            // policy (e.g. fill-or-kill cancels the entire order).
+            return handleRemainder(incoming, incoming.quantity(), List.of(), book);
+        }
+
         List<Trade> trades = new ArrayList<>();
         BigDecimal remaining = incoming.quantity();
 
@@ -69,6 +75,18 @@ abstract class AbstractOrderMatcher implements OrderMatcher {
             return new MatchResult(trades, Optional.empty());
         }
         return handleRemainder(incoming, remaining, trades, book);
+    }
+
+    /**
+     * Pre-trade check run before any fill occurs. If it fails, the fill loop is skipped entirely
+     * and the whole quantity goes straight to {@link #handleRemainder}, guaranteeing the book is
+     * untouched. The default accepts every order; an all-or-nothing matcher overrides this to
+     * demand sufficient executable liquidity up front.
+     *
+     * @return whether the incoming order is allowed to begin filling
+     */
+    protected boolean canExecute(Order incoming, OrderBook book) {
+        return true;
     }
 
     /**

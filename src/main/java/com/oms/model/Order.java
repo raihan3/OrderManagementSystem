@@ -11,10 +11,15 @@ import java.util.UUID;
  * @param id        unique identifier of the order
  * @param symbol    ticker/commodity identifying the instrument being traded
  * @param side      whether the order is a {@link Side#BUY} or {@link Side#SELL}
- * @param type      whether the order is a {@link OrderType#LIMIT} or {@link OrderType#MARKET} order
+ * @param type      the pricing and time-in-force behaviour of the order (see {@link OrderType})
  * @param quantity  amount of the underlying instrument to be traded
- * @param price     price per unit for a {@link OrderType#LIMIT} order; {@code null} for a
- *                  {@link OrderType#MARKET} order, which carries no price
+ * @param price     limit price per unit for a priced ({@link OrderType#LIMIT},
+ *                  {@link OrderType#IOC}, {@link OrderType#FOK} or {@link OrderType#STOP_LIMIT})
+ *                  order; {@code null} for {@link OrderType#MARKET} and {@link OrderType#STOP}
+ *                  orders, which carry no limit price
+ * @param stopPrice trigger price for a {@link OrderType#STOP} or {@link OrderType#STOP_LIMIT}
+ *                  order — the order lies dormant until the market trades at or through it;
+ *                  {@code null} for every other type
  * @param timestamp instant the order was received by the order management system
  * @param status    current lifecycle state of the order
  */
@@ -25,6 +30,7 @@ public record Order(
         OrderType type,
         BigDecimal quantity,
         BigDecimal price,
+        BigDecimal stopPrice,
         Instant timestamp,
         OrderStatus status
 ) {
@@ -33,13 +39,14 @@ public record Order(
      * Validates every field. Runs for all construction paths (direct, {@link Builder}, and
      * order amendments), so an invalid {@code Order} can never exist.
      *
-     * @throws NullPointerException     if any field other than the price of a market order is
-     *                                  {@code null}
+     * @throws NullPointerException     if a required field is {@code null} (which fields are
+     *                                  required depends on {@code type})
      * @throws IllegalArgumentException if {@code symbol} is blank, {@code quantity} is not
-     *                                  strictly positive, a priced ({@link OrderType#LIMIT} or
-     *                                  {@link OrderType#IOC}) order's price is missing or not
-     *                                  strictly positive, or a {@link OrderType#MARKET} order
-     *                                  carries a price
+     *                                  strictly positive, a required price or stop price is not
+     *                                  strictly positive, or the order carries a price the type
+     *                                  forbids (a limit price on a {@link OrderType#MARKET} or
+     *                                  {@link OrderType#STOP} order, or a stop price on a
+     *                                  non-stop order)
      */
     public Order {
 
@@ -59,17 +66,48 @@ public record Order(
         }
 
         switch (type) {
-            case LIMIT, IOC -> {
-                Objects.requireNonNull(price, "price must not be null for a " + type + " order");
-                if (price.signum() <= 0) {
-                    throw new IllegalArgumentException("price must be strictly positive, but was " + price);
-                }
+            case LIMIT, IOC, FOK -> {
+                requirePositivePrice(price, type);
+                requireNoStopPrice(stopPrice, type);
             }
             case MARKET -> {
-                if (price != null) {
-                    throw new IllegalArgumentException("a MARKET order must not carry a price, but was " + price);
-                }
+                requireNoLimitPrice(price, type);
+                requireNoStopPrice(stopPrice, type);
             }
+            case STOP -> {
+                requireNoLimitPrice(price, type);
+                requirePositiveStopPrice(stopPrice, type);
+            }
+            case STOP_LIMIT -> {
+                requirePositivePrice(price, type);
+                requirePositiveStopPrice(stopPrice, type);
+            }
+        }
+    }
+
+    private static void requirePositivePrice(BigDecimal price, OrderType type) {
+        Objects.requireNonNull(price, "price must not be null for a " + type + " order");
+        if (price.signum() <= 0) {
+            throw new IllegalArgumentException("price must be strictly positive, but was " + price);
+        }
+    }
+
+    private static void requireNoLimitPrice(BigDecimal price, OrderType type) {
+        if (price != null) {
+            throw new IllegalArgumentException("a " + type + " order must not carry a limit price, but was " + price);
+        }
+    }
+
+    private static void requirePositiveStopPrice(BigDecimal stopPrice, OrderType type) {
+        Objects.requireNonNull(stopPrice, "stopPrice must not be null for a " + type + " order");
+        if (stopPrice.signum() <= 0) {
+            throw new IllegalArgumentException("stopPrice must be strictly positive, but was " + stopPrice);
+        }
+    }
+
+    private static void requireNoStopPrice(BigDecimal stopPrice, OrderType type) {
+        if (stopPrice != null) {
+            throw new IllegalArgumentException("a " + type + " order must not carry a stop price, but was " + stopPrice);
         }
     }
 
@@ -78,6 +116,32 @@ public record Order(
      */
     public boolean isMarket() {
         return type == OrderType.MARKET;
+    }
+
+    /**
+     * @return {@code true} if this is a trigger-based ({@link OrderType#STOP} or
+     *         {@link OrderType#STOP_LIMIT}) order
+     */
+    public boolean isStop() {
+        return type == OrderType.STOP || type == OrderType.STOP_LIMIT;
+    }
+
+    /**
+     * Evaluates this stop order's trigger against a traded price: a buy stop triggers when the
+     * market trades at or above its stop price, a sell stop when the market trades at or below it.
+     *
+     * @param lastTradePrice the price the market just traded at
+     * @return whether that trade fires this stop's trigger
+     * @throws IllegalStateException if this is not a stop order
+     */
+    public boolean isStopTriggeredAt(BigDecimal lastTradePrice) {
+        Objects.requireNonNull(lastTradePrice, "lastTradePrice must not be null");
+        if (!isStop()) {
+            throw new IllegalStateException("order " + id + " is a " + type + " order and has no stop trigger");
+        }
+        return side == Side.BUY
+                ? lastTradePrice.compareTo(stopPrice) >= 0
+                : lastTradePrice.compareTo(stopPrice) <= 0;
     }
 
     /**
@@ -98,6 +162,7 @@ public record Order(
                 .type(type)
                 .quantity(quantity)
                 .price(price)
+                .stopPrice(stopPrice)
                 .timestamp(timestamp)
                 .status(status);
     }
@@ -117,6 +182,7 @@ public record Order(
         private OrderType type = OrderType.LIMIT;
         private BigDecimal quantity;
         private BigDecimal price;
+        private BigDecimal stopPrice;
         private Instant timestamp;
         private OrderStatus status;
 
@@ -153,6 +219,11 @@ public record Order(
             return this;
         }
 
+        public Builder stopPrice(BigDecimal stopPrice) {
+            this.stopPrice = stopPrice;
+            return this;
+        }
+
         public Builder timestamp(Instant timestamp) {
             this.timestamp = timestamp;
             return this;
@@ -164,7 +235,7 @@ public record Order(
         }
 
         public Order build() {
-            return new Order(id, symbol, side, type, quantity, price, timestamp, status);
+            return new Order(id, symbol, side, type, quantity, price, stopPrice, timestamp, status);
         }
     }
 }

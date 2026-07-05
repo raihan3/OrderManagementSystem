@@ -36,11 +36,19 @@ public final class TestOrders {
     }
 
     public static Order buy(String quantity, String price, Instant timestamp) {
-        return base().side(Side.BUY).quantity(bd(quantity)).price(bd(price)).timestamp(timestamp).build();
+        return buy(SYMBOL, quantity, price, timestamp);
     }
 
     public static Order sell(String quantity, String price, Instant timestamp) {
-        return base().side(Side.SELL).quantity(bd(quantity)).price(bd(price)).timestamp(timestamp).build();
+        return sell(SYMBOL, quantity, price, timestamp);
+    }
+
+    public static Order buy(String symbol, String quantity, String price, Instant timestamp) {
+        return base().symbol(symbol).side(Side.BUY).quantity(bd(quantity)).price(bd(price)).timestamp(timestamp).build();
+    }
+
+    public static Order sell(String symbol, String quantity, String price, Instant timestamp) {
+        return base().symbol(symbol).side(Side.SELL).quantity(bd(quantity)).price(bd(price)).timestamp(timestamp).build();
     }
 
     public static Order marketBuy(String quantity, Instant timestamp) {
@@ -75,6 +83,62 @@ public final class TestOrders {
                 .type(OrderType.IOC)
                 .quantity(bd(quantity))
                 .price(bd(price))
+                .timestamp(timestamp)
+                .build();
+    }
+
+    public static Order fokBuy(String quantity, String price, Instant timestamp) {
+        return fok(Side.BUY, quantity, price, timestamp);
+    }
+
+    public static Order fokSell(String quantity, String price, Instant timestamp) {
+        return fok(Side.SELL, quantity, price, timestamp);
+    }
+
+    private static Order fok(Side side, String quantity, String price, Instant timestamp) {
+        return base()
+                .side(side)
+                .type(OrderType.FOK)
+                .quantity(bd(quantity))
+                .price(bd(price))
+                .timestamp(timestamp)
+                .build();
+    }
+
+    public static Order stopBuy(String quantity, String stopPrice, Instant timestamp) {
+        return stop(Side.BUY, quantity, stopPrice, timestamp);
+    }
+
+    public static Order stopSell(String quantity, String stopPrice, Instant timestamp) {
+        return stop(Side.SELL, quantity, stopPrice, timestamp);
+    }
+
+    private static Order stop(Side side, String quantity, String stopPrice, Instant timestamp) {
+        return base()
+                .side(side)
+                .type(OrderType.STOP)
+                .price(null) // base() sets a default price; a STOP order must not carry one
+                .stopPrice(bd(stopPrice))
+                .quantity(bd(quantity))
+                .timestamp(timestamp)
+                .build();
+    }
+
+    public static Order stopLimitBuy(String quantity, String stopPrice, String limitPrice, Instant timestamp) {
+        return stopLimit(Side.BUY, quantity, stopPrice, limitPrice, timestamp);
+    }
+
+    public static Order stopLimitSell(String quantity, String stopPrice, String limitPrice, Instant timestamp) {
+        return stopLimit(Side.SELL, quantity, stopPrice, limitPrice, timestamp);
+    }
+
+    private static Order stopLimit(Side side, String quantity, String stopPrice, String limitPrice, Instant timestamp) {
+        return base()
+                .side(side)
+                .type(OrderType.STOP_LIMIT)
+                .stopPrice(bd(stopPrice))
+                .price(bd(limitPrice))
+                .quantity(bd(quantity))
                 .timestamp(timestamp)
                 .build();
     }

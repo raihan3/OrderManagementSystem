@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
@@ -14,6 +15,8 @@ import static com.oms.support.TestOrders.base;
 import static com.oms.support.TestOrders.buy;
 import static com.oms.support.TestOrders.marketBuy;
 import static com.oms.support.TestOrders.sell;
+import static com.oms.support.TestOrders.stopBuy;
+import static com.oms.support.TestOrders.stopSell;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -153,6 +156,116 @@ class OrderBookTest {
         book.addOrder(sell("1", "105", at(1)));
 
         assertEquals(Optional.empty(), book.spread());
+    }
+
+    @Test
+    void availableLiquidityIsZeroOnAnEmptySide() {
+        assertEquals(0, book.availableLiquidity(Side.SELL).compareTo(BigDecimal.ZERO));
+        assertEquals(0, book.availableLiquidity(Side.SELL, new BigDecimal("100")).compareTo(BigDecimal.ZERO));
+    }
+
+    @Test
+    void availableLiquiditySumsEveryOrderOnTheSide() {
+        book.addOrder(sell("3", "100", at(0)));
+        book.addOrder(sell("4", "101", at(1)));
+        book.addOrder(buy("9", "99", at(2))); // other side, must not count
+
+        assertEquals(0, book.availableLiquidity(Side.SELL).compareTo(new BigDecimal("7")));
+        assertEquals(0, book.availableLiquidity(Side.BUY).compareTo(new BigDecimal("9")));
+    }
+
+    @Test
+    void priceLimitedLiquidityCountsOnlyOrdersTheAggressorCanReach() {
+        book.addOrder(sell("3", "100", at(0)));
+        book.addOrder(sell("4", "101", at(1)));
+        book.addOrder(sell("5", "102", at(2)));
+
+        // A buyer limited to 101 can reach the 100 and 101 asks, but not the 102 ask.
+        assertEquals(0, book.availableLiquidity(Side.SELL, new BigDecimal("101"))
+                .compareTo(new BigDecimal("7")));
+    }
+
+    @Test
+    void priceLimitedLiquidityOnBuySideCountsBidsAtOrAboveTheLimit() {
+        book.addOrder(buy("3", "100", at(0)));
+        book.addOrder(buy("4", "99", at(1)));
+        book.addOrder(buy("5", "98", at(2)));
+
+        // A seller limited to 99 can hit the 100 and 99 bids, but not the 98 bid.
+        assertEquals(0, book.availableLiquidity(Side.BUY, new BigDecimal("99"))
+                .compareTo(new BigDecimal("7")));
+    }
+
+    @Test
+    void priceLimitedLiquidityIncludesRestingMarketOrders() {
+        book.addOrder(com.oms.support.TestOrders.marketSell("2", at(0)));
+        book.addOrder(sell("3", "100", at(1)));
+        book.addOrder(sell("4", "105", at(2))); // beyond the aggressor's limit
+
+        // Market orders trade at any price, so they always count.
+        assertEquals(0, book.availableLiquidity(Side.SELL, new BigDecimal("100"))
+                .compareTo(new BigDecimal("5")));
+    }
+
+    @Test
+    void rejectsRestingAStopOrderOnTheBook() {
+        assertThrows(IllegalArgumentException.class, () -> book.addOrder(stopBuy("1", "100", at(0))));
+    }
+
+    @Test
+    void rejectsParkingANonStopOrderInTheStopLists() {
+        assertThrows(IllegalArgumentException.class, () -> book.addStopOrder(buy("1", "100", at(0))));
+    }
+
+    @Test
+    void pollReleasesOnlyBuyStopsAtOrBelowTheTradedPrice() {
+        Order nearest = stopBuy("1", "100", at(0));
+        Order mid = stopBuy("1", "101", at(1));
+        Order far = stopBuy("1", "103", at(2));
+        book.addStopOrder(far);
+        book.addStopOrder(nearest);
+        book.addStopOrder(mid);
+
+        List<Order> triggered = book.pollTriggeredStops(new BigDecimal("101"));
+
+        assertEquals(List.of(nearest, mid), triggered);          // closest trigger first
+        assertEquals(1, book.buyStopOrders().size());            // far stop stays parked
+        assertTrue(book.pollTriggeredStops(new BigDecimal("101")).isEmpty()); // polled stops are gone
+    }
+
+    @Test
+    void pollReleasesOnlySellStopsAtOrAboveTheTradedPrice() {
+        Order nearest = stopSell("1", "100", at(0));
+        Order mid = stopSell("1", "99", at(1));
+        Order far = stopSell("1", "97", at(2));
+        book.addStopOrder(far);
+        book.addStopOrder(nearest);
+        book.addStopOrder(mid);
+
+        List<Order> triggered = book.pollTriggeredStops(new BigDecimal("99"));
+
+        assertEquals(List.of(nearest, mid), triggered);          // highest trigger fires first
+        assertEquals(1, book.sellStopOrders().size());
+    }
+
+    @Test
+    void stopsAtTheSameTriggerPriceReleaseInArrivalOrder() {
+        Order later = stopBuy("1", "100", at(5));
+        Order earlier = stopBuy("1", "100", at(0));
+        book.addStopOrder(later);
+        book.addStopOrder(earlier);
+
+        assertEquals(List.of(earlier, later), book.pollTriggeredStops(new BigDecimal("100")));
+    }
+
+    @Test
+    void removeStopOrderReportsWhetherPresent() {
+        Order stop = stopSell("1", "95", at(0));
+        book.addStopOrder(stop);
+
+        assertTrue(book.removeStopOrder(stop));
+        assertFalse(book.removeStopOrder(stop));
+        assertTrue(book.pollTriggeredStops(new BigDecimal("90")).isEmpty());
     }
 
     @Test

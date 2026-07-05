@@ -20,6 +20,7 @@ public class OrderMatcherFactory {
     private final OrderMatcher limitOrderMatcher;
     private final OrderMatcher marketOrderMatcher;
     private final OrderMatcher iocOrderMatcher;
+    private final OrderMatcher fokOrderMatcher;
 
     public OrderMatcherFactory(Clock clock) {
         this(clock, new MarketPriceTracker());
@@ -31,6 +32,7 @@ public class OrderMatcherFactory {
         this.limitOrderMatcher = new LimitOrderMatcher(clock, marketPriceTracker);
         this.marketOrderMatcher = new MarketOrderMatcher(clock, marketPriceTracker);
         this.iocOrderMatcher = new IocOrderMatcher(clock, marketPriceTracker);
+        this.fokOrderMatcher = new FokOrderMatcher(clock, marketPriceTracker);
     }
 
     /**
@@ -42,6 +44,11 @@ public class OrderMatcherFactory {
             case LIMIT -> limitOrderMatcher;
             case MARKET -> marketOrderMatcher;
             case IOC -> iocOrderMatcher;
+            case FOK -> fokOrderMatcher;
+            // Stop orders lie dormant in the book's stop lists until the engine activates them as
+            // MARKET/LIMIT orders; a dormant stop must never reach a matcher directly.
+            case STOP, STOP_LIMIT -> throw new IllegalArgumentException(
+                    "a " + order.type() + " order must be triggered and activated before matching: " + order.id());
         };
     }
 
