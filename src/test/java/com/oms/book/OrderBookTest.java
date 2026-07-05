@@ -29,7 +29,7 @@ class OrderBookTest {
 
     @BeforeEach
     void setUp() {
-        book = new OrderBook();
+        book = new PriceTimePriorityOrderBook();
     }
 
     @Test

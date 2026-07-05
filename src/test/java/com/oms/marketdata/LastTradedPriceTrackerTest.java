@@ -9,13 +9,13 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class MarketPriceTrackerTest {
+class LastTradedPriceTrackerTest {
 
-    private MarketPriceTracker tracker;
+    private LastTradedPriceTracker tracker;
 
     @BeforeEach
     void setUp() {
-        tracker = new MarketPriceTracker();
+        tracker = new LastTradedPriceTracker();
     }
 
     @Test

@@ -1,8 +1,10 @@
 package com.oms.engine;
 
+import com.oms.book.InMemoryOrderBookRegistry;
 import com.oms.book.OrderBook;
 import com.oms.book.OrderBookRegistry;
 import com.oms.marketdata.MarketPriceTracker;
+import com.oms.marketdata.OrderBookSnapshotService;
 import com.oms.matching.OrderMatcher;
 import com.oms.matching.OrderMatcherFactory;
 import com.oms.model.MatchResult;
@@ -33,24 +35,37 @@ import java.util.Optional;
  * order at its limit price — re-matching until no further stops trigger, so activations that move
  * the price cascade into further activations.
  */
-public class OrderMatchingService {
+public class OrderMatchingService implements MatchingEngine {
 
     private final OrderBookRegistry orderBooks;
     private final OrderMatcherFactory matcherFactory;
     private final Clock clock;
+    private final OrderBookSnapshotService snapshotService; // null when snapshotting is disabled
 
     public OrderMatchingService() {
-        this(new OrderBookRegistry(), Clock.systemUTC());
+        this(new InMemoryOrderBookRegistry(), Clock.systemUTC());
     }
 
     public OrderMatchingService(OrderBookRegistry orderBooks, Clock clock) {
-        this(orderBooks, new OrderMatcherFactory(clock), clock);
+        this(orderBooks, new OrderMatcherFactory(clock), clock, null);
     }
 
-    public OrderMatchingService(OrderBookRegistry orderBooks, OrderMatcherFactory matcherFactory, Clock clock) {
+    /**
+     * Creates an engine that ticks the given snapshot service after every processed order, so
+     * periodic snapshots are taken in-band on the matching thread.
+     */
+    public OrderMatchingService(OrderBookRegistry orderBooks, Clock clock,
+                                OrderBookSnapshotService snapshotService) {
+        this(orderBooks, new OrderMatcherFactory(clock), clock,
+                Objects.requireNonNull(snapshotService, "snapshotService must not be null"));
+    }
+
+    public OrderMatchingService(OrderBookRegistry orderBooks, OrderMatcherFactory matcherFactory, Clock clock,
+                                OrderBookSnapshotService snapshotService) {
         this.orderBooks = Objects.requireNonNull(orderBooks, "orderBooks must not be null");
         this.matcherFactory = Objects.requireNonNull(matcherFactory, "matcherFactory must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
+        this.snapshotService = snapshotService;
     }
 
     /**
@@ -64,6 +79,7 @@ public class OrderMatchingService {
      * @param incoming the order to match; must not already be resting on the book
      * @return the executions produced and any unfilled remainder
      */
+    @Override
     public MatchResult match(Order incoming) {
         Objects.requireNonNull(incoming, "incoming order must not be null");
         OrderBook book = orderBooks.bookFor(incoming.symbol());
@@ -73,6 +89,12 @@ public class OrderMatchingService {
                 : matcherFactory.matcherFor(incoming).match(incoming, book);
 
         activateTriggeredStops(book, incoming.symbol());
+        if (snapshotService != null) {
+            // In-band periodic snapshotting: runs on this matching thread, once the order (and any
+            // stop cascade it caused) has fully settled, so a snapshot never sees a half-processed
+            // book.
+            snapshotService.tick();
+        }
         return result;
     }
 

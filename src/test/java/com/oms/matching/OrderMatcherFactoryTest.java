@@ -1,6 +1,7 @@
 package com.oms.matching;
 
 import com.oms.book.OrderBook;
+import com.oms.book.PriceTimePriorityOrderBook;
 import com.oms.model.MatchResult;
 import com.oms.model.Order;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,7 +49,7 @@ class OrderMatcherFactoryTest {
 
     @Test
     void fokMatcherKillsWithoutTradingWhenLiquidityIsShort() {
-        OrderBook book = new OrderBook();
+        OrderBook book = new PriceTimePriorityOrderBook();
         book.addOrder(sell("2", "100", at(0)));
         Order incoming = fokBuy("5", "100", at(1));
 
@@ -62,7 +63,7 @@ class OrderMatcherFactoryTest {
 
     @Test
     void iocMatcherCancelsUnfilledRemainder() {
-        OrderBook book = new OrderBook();
+        OrderBook book = new PriceTimePriorityOrderBook();
         Order incoming = iocBuy("5", "100", at(0));
 
         MatchResult result = factory.matcherFor(incoming).match(incoming, book);
@@ -79,7 +80,7 @@ class OrderMatcherFactoryTest {
 
     @Test
     void limitMatcherRestsUnfilledRemainder() {
-        OrderBook book = new OrderBook();
+        OrderBook book = new PriceTimePriorityOrderBook();
         Order incoming = buy("5", "100", at(0));
 
         MatchResult result = factory.matcherFor(incoming).match(incoming, book);
@@ -90,7 +91,7 @@ class OrderMatcherFactoryTest {
 
     @Test
     void marketMatcherRestsUnfilledRemainderAtTopOfBook() {
-        OrderBook book = new OrderBook();
+        OrderBook book = new PriceTimePriorityOrderBook();
         Order incoming = marketBuy("5", at(0));
 
         MatchResult result = factory.matcherFor(incoming).match(incoming, book);

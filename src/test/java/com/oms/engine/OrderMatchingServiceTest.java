@@ -1,7 +1,10 @@
 package com.oms.engine;
 
+import com.oms.book.InMemoryOrderBookRegistry;
 import com.oms.book.OrderBook;
 import com.oms.book.OrderBookRegistry;
+import com.oms.book.OrderBookSnapshot;
+import com.oms.marketdata.OrderBookSnapshotService;
 import com.oms.model.MatchResult;
 import com.oms.model.Order;
 import com.oms.model.OrderStatus;
@@ -12,6 +15,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -42,7 +46,7 @@ class OrderMatchingServiceTest {
 
     @BeforeEach
     void setUp() {
-        OrderBookRegistry registry = new OrderBookRegistry();
+        OrderBookRegistry registry = new InMemoryOrderBookRegistry();
         service = new OrderMatchingService(registry, Clock.fixed(NOW, ZoneOffset.UTC));
         // Existing single-symbol tests operate on the AAPL book (TestOrders default symbol).
         book = registry.bookFor("AAPL");
@@ -532,6 +536,23 @@ class OrderMatchingServiceTest {
         assertTrue(result.fullyFilled());
         assertEquals("MSFT", result.trades().getFirst().symbol());
         assertTrue(service.orderBook("MSFT").bestSell().isEmpty());
+    }
+
+    @Test
+    void engineTicksTheSnapshotServiceAfterEachMatch() {
+        OrderBookRegistry registry = new InMemoryOrderBookRegistry();
+        // Zero interval: a snapshot cycle runs on every tick, so effects are visible immediately.
+        OrderBookSnapshotService snapshots = new OrderBookSnapshotService(
+                registry, Duration.ZERO, Clock.fixed(NOW, ZoneOffset.UTC));
+        OrderMatchingService engine = new OrderMatchingService(
+                registry, Clock.fixed(NOW, ZoneOffset.UTC), snapshots);
+
+        Order resting = buy("5", "100", at(0));
+        engine.match(resting);
+
+        OrderBookSnapshot snapshot = snapshots.latestSnapshot("AAPL").orElseThrow();
+        assertEquals(NOW, snapshot.timestamp());
+        assertEquals(resting.id(), snapshot.bestBuy().orElseThrow().id());
     }
 
     @Test

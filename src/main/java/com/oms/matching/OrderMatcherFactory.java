@@ -1,5 +1,6 @@
 package com.oms.matching;
 
+import com.oms.marketdata.LastTradedPriceTracker;
 import com.oms.marketdata.MarketPriceTracker;
 import com.oms.model.Order;
 
@@ -23,7 +24,7 @@ public class OrderMatcherFactory {
     private final OrderMatcher fokOrderMatcher;
 
     public OrderMatcherFactory(Clock clock) {
-        this(clock, new MarketPriceTracker());
+        this(clock, new LastTradedPriceTracker());
     }
 
     public OrderMatcherFactory(Clock clock, MarketPriceTracker marketPriceTracker) {

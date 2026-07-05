@@ -1,38 +1,28 @@
 package com.oms.marketdata;
 
 import java.math.BigDecimal;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Tracks the current market price of each symbol as its last-traded price.
+ * Tracks the current market price of each symbol. This is the reference price used when two
+ * {@link com.oms.model.OrderType#MARKET} orders match and neither carries a price of its own, and
+ * the trigger source for stop orders.
  *
- * <p>Every execution updates the symbol's price via {@link #record(String, BigDecimal)}, so the
- * tracked value always reflects the most recent trade. This is the reference price used when two
- * {@link com.oms.model.OrderType#MARKET} orders match and neither carries a price of its own. A
- * symbol has no market price until it has traded at least once (or one is seeded via
- * {@link #record(String, BigDecimal)}).
+ * <p>The engine {@link #record(String, BigDecimal) records} every execution; how those recordings
+ * become "the market price" is the implementation's pricing policy — see
+ * {@link LastTradedPriceTracker} for the standard last-trade policy, with mid-price or VWAP as
+ * possible alternatives.
  */
-public class MarketPriceTracker {
-
-    private final Map<String, BigDecimal> lastPriceBySymbol = new HashMap<>();
+public interface MarketPriceTracker {
 
     /**
-     * Records the latest traded price for a symbol, becoming its current market price.
+     * Records an execution at the given price for a symbol. May also be called directly to seed an
+     * opening/reference price before the symbol has traded.
      */
-    public void record(String symbol, BigDecimal price) {
-        Objects.requireNonNull(symbol, "symbol must not be null");
-        Objects.requireNonNull(price, "price must not be null");
-        lastPriceBySymbol.put(symbol, price);
-    }
+    void record(String symbol, BigDecimal price);
 
     /**
-     * @return the current market (last-traded) price for the symbol, or empty if it has never traded
+     * @return the current market price for the symbol, or empty if none has been established yet
      */
-    public Optional<BigDecimal> lastPrice(String symbol) {
-        Objects.requireNonNull(symbol, "symbol must not be null");
-        return Optional.ofNullable(lastPriceBySymbol.get(symbol));
-    }
+    Optional<BigDecimal> lastPrice(String symbol);
 }
