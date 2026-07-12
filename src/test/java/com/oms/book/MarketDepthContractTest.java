@@ -14,13 +14,18 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class MarketDepthTest {
+/**
+ * Market-depth behaviour every {@link OrderBook} implementation must provide identically.
+ */
+abstract class MarketDepthContractTest {
 
     private OrderBook book;
 
+    protected abstract OrderBook createBook();
+
     @BeforeEach
     void setUp() {
-        book = new PriceTimePriorityOrderBook();
+        book = createBook();
     }
 
     private static void assertLevel(PriceLevel level, String price, String quantity, int orderCount) {

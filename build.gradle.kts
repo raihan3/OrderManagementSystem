@@ -1,5 +1,6 @@
 plugins {
     id("java")
+    id("me.champeau.jmh") version "0.7.3"
 }
 
 group = "com.oms"
@@ -17,4 +18,8 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+jmh {
+    jmhVersion = "1.37"
 }

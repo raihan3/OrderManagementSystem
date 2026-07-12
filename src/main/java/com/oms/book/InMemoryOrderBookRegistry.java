@@ -53,7 +53,7 @@ public class InMemoryOrderBookRegistry implements OrderBookRegistry {
      *                       symbol to be {@link #register(String) registered} first
      * @param bookFactory    creates the empty book for each newly seen symbol
      */
-    public InMemoryOrderBookRegistry(boolean createOnDemand, Supplier<OrderBook> bookFactory) {
+    public InMemoryOrderBookRegistry(boolean createOnDemand, Supplier<OrderBook> bookFactory) throws IllegalArgumentException {
         this.createOnDemand = createOnDemand;
         this.bookFactory = Objects.requireNonNull(bookFactory, "bookFactory must not be null");
     }

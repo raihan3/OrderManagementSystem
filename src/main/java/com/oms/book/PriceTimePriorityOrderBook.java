@@ -184,35 +184,14 @@ public class PriceTimePriorityOrderBook implements OrderBook {
     }
 
     /**
-     * Orders each stop list by trigger proximity: buy stops fire as the market rises, so the
-     * lowest stop price triggers first; sell stops fire as the market falls, so the highest stop
-     * price triggers first. Ties break on time then id, mirroring the resting book.
+     * The {@link TreeMap} keys are ids, so the shared {@link BookOrdering} comparators are lifted
+     * to id comparators by resolving each id back to its order via {@link #stopOrdersById}.
      */
     private Comparator<UUID> stopOrderIdComparator(boolean buySide) {
-        Comparator<Order> byTriggerProximity = buySide
-                ? Comparator.comparing(Order::stopPrice)
-                : Comparator.comparing(Order::stopPrice).reversed();
-        Comparator<Order> stopComparator =
-                byTriggerProximity.thenComparing(Order::timestamp).thenComparing(Order::id);
-        return Comparator.comparing(stopOrdersById::get, stopComparator);
+        return Comparator.comparing(stopOrdersById::get, BookOrdering.stopOrder(buySide));
     }
 
     private Comparator<UUID> orderIdComparator(boolean buySide) {
-        // Market orders rank ahead of all limit orders; the id tie-break keeps distinct orders
-        // that share a rank from colliding as equal keys in the TreeMap.
-        Comparator<Order> marketBeforeLimit = Comparator.comparing((Order o) -> o.isMarket() ? 0 : 1);
-        Comparator<Order> byTime = Comparator.comparing(Order::timestamp).thenComparing(Order::id);
-        Comparator<Order> byPrice = buySide
-                ? Comparator.comparing(Order::price).reversed()  // highest bid first
-                : Comparator.comparing(Order::price);            // lowest ask first
-        Comparator<Order> byPriceThenTime = byPrice.thenComparing(byTime);
-
-        // Once market-vs-limit ties, both orders are the same kind: market orders compare on time
-        // only (they have no price), limit orders on price then time.
-        Comparator<Order> withinGroup = (a, b) ->
-                a.isMarket() ? byTime.compare(a, b) : byPriceThenTime.compare(a, b);
-
-        Comparator<Order> orderComparator = marketBeforeLimit.thenComparing(withinGroup);
-        return Comparator.comparing(ordersById::get, orderComparator);
+        return Comparator.comparing(ordersById::get, BookOrdering.restingOrder(buySide));
     }
 }

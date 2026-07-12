@@ -23,13 +23,19 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class OrderBookTest {
+/**
+ * Behavioural contract every {@link OrderBook} implementation must satisfy. Subclass per
+ * implementation, supplying the instance under test via {@link #createBook()}.
+ */
+abstract class OrderBookContractTest {
 
     private OrderBook book;
 
+    protected abstract OrderBook createBook();
+
     @BeforeEach
     void setUp() {
-        book = new PriceTimePriorityOrderBook();
+        book = createBook();
     }
 
     @Test
